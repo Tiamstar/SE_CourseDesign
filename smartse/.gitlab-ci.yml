@@ -1,0 +1,103 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_REGISTRY: registry.example.com
+  IMAGE_NAME: $DOCKER_REGISTRY/smartse
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+# 测试阶段
+test_client:
+  stage: test
+  image: node:14
+  script:
+    - cd client
+    - npm install
+    - npm run test
+  only:
+    - master
+    - develop
+    - merge_requests
+
+test_server:
+  stage: test
+  image: node:14
+  script:
+    - cd server
+    - npm install
+    - npm run test
+  only:
+    - master
+    - develop
+    - merge_requests
+
+# 构建阶段
+build_image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login -u $DOCKER_USER -p $DOCKER_PASSWORD $DOCKER_REGISTRY
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+    - docker push $IMAGE_NAME:latest
+  only:
+    - master
+    - tags
+
+# 部署阶段 - 测试环境
+deploy_test:
+  stage: deploy
+  image: alpine
+  script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$TEST_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh -o StrictHostKeyChecking=no $TEST_SERVER_USER@$TEST_SERVER "
+        docker login -u $DOCKER_USER -p $DOCKER_PASSWORD $DOCKER_REGISTRY &&
+        docker pull $IMAGE_NAME:$IMAGE_TAG &&
+        docker stop smartse-container || true &&
+        docker rm smartse-container || true &&
+        docker run -d --name smartse-container -p 5000:5000 
+        -e MONGO_URI=$TEST_MONGO_URI
+        -e ES_HOST=$TEST_ES_HOST
+        -e HW_LLM_API_URL=$TEST_HW_LLM_API_URL
+        -e HW_LLM_API_KEY=$TEST_HW_LLM_API_KEY
+        $IMAGE_NAME:$IMAGE_TAG"
+  environment:
+    name: test
+    url: https://test.smartse.example.com
+  only:
+    - develop
+
+# 部署阶段 - 生产环境
+deploy_production:
+  stage: deploy
+  image: alpine
+  script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh -o StrictHostKeyChecking=no $PROD_SERVER_USER@$PROD_SERVER "
+        docker login -u $DOCKER_USER -p $DOCKER_PASSWORD $DOCKER_REGISTRY &&
+        docker pull $IMAGE_NAME:$IMAGE_TAG &&
+        docker stop smartse-container || true &&
+        docker rm smartse-container || true &&
+        docker run -d --name smartse-container -p 5000:5000 
+        -e MONGO_URI=$PROD_MONGO_URI
+        -e ES_HOST=$PROD_ES_HOST
+        -e HW_LLM_API_URL=$PROD_HW_LLM_API_URL
+        -e HW_LLM_API_KEY=$PROD_HW_LLM_API_KEY
+        $IMAGE_NAME:$IMAGE_TAG"
+  environment:
+    name: production
+    url: https://smartse.example.com
+  only:
+    - master
+    - tags
+  when: manual 

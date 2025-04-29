@@ -1,0 +1,41 @@
+# 生产环境配置
+spring:
+  profiles:
+    active: prod
+
+# Milvus配置
+milvus:
+  host: ${MILVUS_HOST:localhost}
+  port: ${MILVUS_PORT:19530}
+
+# 模型配置
+model:
+  path: ${MODEL_PATH:/app/models/sentence-bert}
+  dimension: 768
+
+# 文件上传配置
+file:
+  upload:
+    temp-dir: /app/temp
+    max-size: 10MB
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.example.seassistant: DEBUG
+  file:
+    name: /app/logs/se-assistant.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# 性能配置
+server:
+  tomcat:
+    max-threads: 200
+    min-spare-threads: 10
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,application/javascript,application/json
+    min-response-size: 2048 
